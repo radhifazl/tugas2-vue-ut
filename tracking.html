@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UT Delivery Tracking System</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="css/tracking.css">
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+</head>
+<body>
+
+<div id="app">
+  <div class="container">
+    
+    <header class="dashboard-header">
+      <div>
+        <h1>Pelacakan Pengiriman Bahan Ajar</h1>
+        <p>Sistem Informasi Distribusi Bahan Ajar Terintegrasi Universitas Terbuka</p>
+      </div>
+      <div>
+        <button class="btn btn-primary" @click="bukaModalDO">
+          <i class="fas fa-plus-circle"></i> Tambah Delivery Order
+        </button>
+      </div>
+    </header>
+
+    <section class="summary-grid">
+      <div class="summary-card">
+        <div class="summary-icon total"><i class="fas fa-box"></i></div>
+        <div class="summary-info">
+          <h3>{{ dashboardSummary.total }}</h3>
+          <p>Total Kiriman (DO)</p>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon proses"><i class="fas fa-spinner"></i></div>
+        <div class="summary-info">
+          <h3>{{ dashboardSummary.diproses }}</h3>
+          <p>Sedang Diproses</p>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon kirim"><i class="fas fa-truck-ramp-box"></i></div>
+        <div class="summary-info">
+          <h3>{{ dashboardSummary.dikirim }}</h3>
+          <p>Dalam Perjalanan</p>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon sampai"><i class="fas fa-circle-check"></i></div>
+        <div class="summary-info">
+          <h3>{{ dashboardSummary.sampai }}</h3>
+          <p>Paket Telah Sampai</p>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon error"><i class="fas fa-triangle-exclamation"></i></div>
+        <div class="summary-info">
+          <h3>{{ dashboardSummary.bermasalah }}</h3>
+          <p>Kiriman Bermasalah</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sticky-bar">
+      <div class="filter-flex">
+        <div class="search-box">
+          <i class="fas fa-magnifying-glass"></i>
+          <input type="text" class="form-ctrl" placeholder="Cari berdasarkan No DO, Nama, atau NIM..." v-model="searchQuery">
+        </div>
+        
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; flex: 2;">
+          <select class="form-ctrl" style="flex: 1; min-width: 140px;" v-model="filterEkspedisi">
+            <option value="">Semua Ekspedisi</option>
+            <option value="JNE Regular">JNE Regular</option>
+            <option value="JNE Express">JNE Express</option>
+          </select>
+
+          <select class="form-ctrl" style="flex: 1; min-width: 140px;" v-model="filterStatus">
+            <option value="">Semua Status</option>
+            <option value="Diproses">Diproses</option>
+            <option value="Dalam Perjalanan">Dalam Perjalanan</option>
+            <option value="Sampai">Sampai</option>
+            <option value="Bermasalah">Bermasalah</option>
+          </select>
+
+          <select class="form-ctrl" style="flex: 1; min-width: 140px;" v-model="sortBy">
+            <option value="tanggalKirim">Urutkan: Tanggal Kirim</option>
+            <option value="total">Urutkan: Total Harga</option>
+            <option value="nama">Urutkan: Nama Mahasiswa</option>
+          </select>
+        </div>
+
+        <button class="btn btn-secondary" @click="resetFilters">Reset Filter</button>
+      </div>
+    </section>
+
+    <main class="sheet-wrapper">
+      <table class="responsive-table">
+        <thead>
+          <tr>
+            <th>Nomor DO</th>
+            <th>NIM & Nama Mahasiswa</th>
+            <th>Ekspedisi</th>
+            <th>Paket Terpilih</th>
+            <th>Tanggal Kirim</th>
+            <th>Total Tagihan</th>
+            <th>Status Pengiriman</th>
+          </tr>
+        </thead>
+
+        <tbody v-if="loading">
+          <tr v-for="i in 3" :key="'skel-'+i" class="skeleton-tr">
+            <td colspan="7"><div class="skeleton-line"></div></td>
+          </tr>
+        </tbody>
+
+        <tbody v-else-if="filteredTrackingData.length === 0">
+          <tr>
+            <td colspan="7">
+              <div class="empty-box">
+                <i class="fas fa-folder-open"></i>
+                <p>Data tracking delivery order tidak ditemukan.</p>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+
+        <transition-group name="list" tag="tbody" v-else>
+          <tr v-for="doItem in filteredTrackingData" :key="doItem.noDO" :class="['tr-item', {'highlight-new': doItem.noDO === newlyAddedDOKey}]">
+            <td data-label="Nomor DO">
+              <span style="font-weight: 700; color: var(--primary);">{{ doItem.noDO }}</span>
+            </td>
+            <td data-label="NIM & Nama Mahasiswa">
+              <div>
+                <strong style="color: var(--text-main);">{{ doItem.nama }}</strong>
+                <div style="font-size: 0.8rem; color: var(--text-muted);"><i class="fas fa-id-card"></i> {{ doItem.nim }}</div>
+              </div>
+            </td>
+            <td data-label="Ekspedisi">
+              <div style="font-weight: 500;"><i class="fas fa-truck"></i> {{ doItem.ekspedisi }}</div>
+            </td>
+            <td data-label="Paket Terpilih">
+              <div>
+                <span style="font-size: 0.85rem; font-weight: 600; background: #e0e7ff; color: var(--primary); padding: 0.15rem 0.4rem; border-radius: 4px;">
+                  {{ doItem.paket }}
+                </span>
+                <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.15rem;">{{ dapatkanNamaPaket(doItem.paket) }}</div>
+              </div>
+            </td>
+            <td data-label="Tanggal Kirim">
+              <div style="color: #475569;"><i class="far fa-calendar-days"></i> {{ doItem.tanggalKirim }}</div>
+            </td>
+            <td data-label="Total Tagihan">
+              <strong style="color: #0f172a;">{{ formatRupiah(doItem.total) }}</strong>
+            </td>
+            <td data-label="Status Pengiriman">
+              <span :class="['badge', dapatkanStatusClass(doItem.status)]">
+                <i :class="dapatkanStatusIcon(doItem.status)"></i> {{ doItem.status }}
+              </span>
+            </td>
+          </tr>
+        </transition-group>
+      </table>
+    </main>
+
+  </div>
+
+  <transition name="zoom">
+    <div class="modal-overlay" v-if="modalShow" @click.self="tutupModalDO">
+      <div class="modal-box">
+        <div class="modal-head">
+          <h3 style="font-weight: 700;"><i class="fas fa-file-invoice"></i> Buat Pengiriman DO Baru</h3>
+          <button style="background:none; border:none; font-size:1.25rem; cursor:pointer; color:var(--text-muted);" @click="tutupModalDO">
+            <i class="fas fa-xmark"></i>
+          </button>
+        </div>
+        
+        <form @submit.prevent="submitFormDO">
+          <div class="modal-body">
+            
+            <div class="form-grp">
+              <label>NOMOR DO (OTOMATIS GENERATE)</label>
+              <input type="text" class="form-ctrl" :value="computedNextDONumber" readonly style="font-weight:700; color:var(--primary); background:#f8fafc;">
+            </div>
+
+            <div class="form-grid-2">
+              <div class="form-grp">
+                <label>NOMOR INDUK MAHASISWA (NIM) *</label>
+                <input type="text" :class="['form-ctrl', {'invalid-input': formErrors.nim}]" placeholder="Min. 8 Angka" v-model="formModel.nim" @input="clearError('nim')">
+                <span class="error-msg" v-if="formErrors.nim">{{ formErrors.nim }}</span>
+              </div>
+              
+              <div class="form-grp">
+                <label>NAMA LENGKAP MAHASISWA *</label>
+                <input type="text" :class="['form-ctrl', {'invalid-input': formErrors.nama}]" placeholder="Nama Lengkap" v-model="formModel.nama" @input="clearError('nama')">
+                <span class="error-msg" v-if="formErrors.nama">{{ formErrors.nama }}</span>
+              </div>
+            </div>
+
+            <div class="form-grid-2">
+              <div class="form-grp">
+                <label>EKSPEDISI LOGISTIK *</label>
+                <select :class="['form-ctrl', {'invalid-input': formErrors.ekspedisi}]" v-model="formModel.ekspedisi" @change="clearError('ekspedisi')">
+                  <option value="">Pilih Opsi Ekspedisi</option>
+                  <option value="JNE Regular">JNE Regular (3-5 hari)</option>
+                  <option value="JNE Express">JNE Express (1-2 hari)</option>
+                </select>
+                <span class="error-msg" v-if="formErrors.ekspedisi">{{ formErrors.ekspedisi }}</span>
+              </div>
+
+              <div class="form-grp">
+                <label>PAKET BAHAN AJAR *</label>
+                <select :class="['form-ctrl', {'invalid-input': formErrors.paket}]" v-model="formModel.paket" @change="handlePaketChange">
+                  <option value="">Pilih Opsi Paket</option>
+                  <option v-for="pkt in listPaketBuku" :key="pkt.kode" :value="pkt.kode">
+                    {{ pkt.kode }} - {{ pkt.nama }}
+                  </option>
+                </select>
+                <span class="error-msg" v-if="formErrors.paket">{{ formErrors.paket }}</span>
+              </div>
+            </div>
+
+            <transition name="fade">
+              <div class="expand-detail-panel" v-if="formModel.paket && terpilihPaketObject">
+                <h4><i class="fas fa-boxes-stacked"></i> Manifes Rincian Konten {{ formModel.paket }}</h4>
+                <div class="meta-items-list">
+                  <div><strong>Mata Kuliah:</strong> {{ terpilihPaketObject.isi.join(', ') }}</div>
+                  <div><strong>Kuantitas:</strong> {{ terpilihPaketObject.isi.length }} Buku Matkul</div>
+                  <div style="color: var(--primary); font-weight:700; margin-top:0.25rem;">
+                    <strong>Subtotal Tagihan:</strong> {{ formatRupiah(terpilihPaketObject.harga) }}
+                  </div>
+                </div>
+              </div>
+            </transition>
+
+            <div class="form-grp" style="margin-top: 1rem;">
+              <label>TANGGAL PENGIRIMAN *</label>
+              <div style="display:flex; gap:0.5rem;">
+                <input type="date" :class="['form-ctrl', {'invalid-input': formErrors.tanggalKirim}]" v-model="formModel.tanggalKirim" @change="clearError('tanggalKirim')" style="flex:2;">
+                <button type="button" class="btn btn-secondary" @click="setTanggalHariIni" style="flex:1; font-size:0.8rem; white-space:nowrap;">Hari Ini</button>
+              </div>
+              <span class="error-msg" v-if="formErrors.tanggalKirim">{{ formErrors.tanggalKirim }}</span>
+            </div>
+
+            <div class="form-grp">
+              <label>NILAI REKAP TOTAL HARGA (READONLY)</label>
+              <input type="text" class="form-ctrl" :value="formatRupiah(formModel.total)" readonly style="background:#f8fafc; font-weight:700; color:#0f172a;">
+            </div>
+
+            <div class="form-grp">
+              <label>STATUS AWAL DISTRIBUSI</label>
+              <select class="form-ctrl" v-model="formModel.status">
+                <option value="Diproses">Diproses</option>
+                <option value="Dalam Perjalanan">Dalam Perjalanan</option>
+                <option value="Sampai">Sampai</option>
+                <option value="Bermasalah">Bermasalah</option>
+              </select>
+            </div>
+
+          </div>
+          <div class="modal-foot" style="padding: 1rem 1.5rem; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:0.75rem; background:#f8fafc;">
+            <button type="button" class="btn btn-secondary" @click="tutupModalDO">Batal</button>
+            <button type="submit" class="btn btn-primary"><i class="fas fa-circle-check"></i> Submit Order</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </transition>
+
+  <div class="toast-container">
+    <transition-group name="fade">
+      <div v-for="tst in activeToasts" :key="tst.id" class="toast-card">
+        <i class="fas fa-circle-check" style="color:var(--sampai)"></i>
+        <span>{{ tst.msg }}</span>
+      </div>
+    </transition-group>
+  </div>
+
+</div>
+
+<script src="js/dataBahanAjar.js"></script>
+
+<script>
+  const { createApp, ref, computed, onMounted } = Vue;
+
+  createApp({
+    setup() {
+      const masterTrackingList = ref([]);
+      const listPaketBuku = ref([]);
+      const loading = ref(true);
+
+      const searchQuery = ref('');
+      const filterEkspedisi = ref('');
+      const filterStatus = ref('');
+      const sortBy = ref('tanggalKirim');
+
+      const modalShow = ref(false);
+      const newlyAddedDOKey = ref(null);
+      const formModel = ref({
+        nim: '', nama: '', ekspedisi: '', paket: '', tanggalKirim: '', total: 0, status: 'Diproses'
+      });
+      const formErrors = ref({
+        nim: '', nama: '', ekspedisi: '', paket: '', tanggalKirim: ''
+      });
+
+      const activeToasts = ref([]);
+
+      onMounted(() => {
+        setTimeout(() => {
+          const parseBuffer = [];
+          if (window.trackingDO) {
+            Object.keys(window.trackingDO).forEach(key => {
+              parseBuffer.push({
+                noDO: key,
+                ...window.trackingDO[key]
+              });
+            });
+          }
+          masterTrackingList.value = parseBuffer;
+          listPaketBuku.value = window.paketList || [];
+          loading.value = false;
+        }, 1000); 
+      });
+
+      const terpilihPaketObject = computed(() => {
+        if (!formModel.value.paket) return null;
+        return listPaketBuku.value.find(p => p.kode === formModel.value.paket) || null;
+      });
+
+      const computedNextDONumber = computed(() => {
+        const tahunBerjalan = new Date().getFullYear();
+        const patternPrefix = `DO${tahunBerjalan}-`;
+        
+        let maxSequenceValue = 0;
+        masterTrackingList.value.forEach(item => {
+          if (item.noDO.startsWith(patternPrefix)) {
+            const sequenceStr = item.noDO.replace(patternPrefix, '');
+            const parsedSeq = parseInt(sequenceStr, 10);
+            if (!isNaN(parsedSeq) && parsedSeq > maxSequenceValue) {
+              maxSequenceValue = parsedSeq;
+            }
+          }
+        });
+
+        const nextSequenceValue = maxSequenceValue + 1;
+        const paddedSequence = String(nextSequenceValue).padStart(3, '0');
+        return `${patternPrefix}${paddedSequence}`;
+      });
+
+      const dashboardSummary = computed(() => {
+        let totalCount = masterTrackingList.value.length;
+        let diprosesCount = 0;
+        let dikirimCount = 0;
+        let sampaiCount = 0;
+        let bermasalahCount = 0;
+
+        masterTrackingList.value.forEach(item => {
+          if (item.status === 'Diproses') diprosesCount++;
+          else if (item.status === 'Dalam Perjalanan') dikirimCount++;
+          else if (item.status === 'Sampai') sampaiCount++;
+          else if (item.status === 'Bermasalah') bermasalahCount++;
+        });
+
+        return {
+          total: totalCount,
+          diproses: diprosesCount,
+          dikirim: dikirimCount,
+          sampai: sampaiCount,
+          bermasalah: bermasalahCount
+        };
+      });
+
+      const filteredTrackingData = computed(() => {
+        let stream = [...masterTrackingList.value];
+
+        if (searchQuery.value.trim() !== '') {
+          const kataKunci = searchQuery.value.toLowerCase();
+          stream = stream.filter(item => 
+            item.noDO.toLowerCase().includes(kataKunci) ||
+            item.nama.toLowerCase().includes(kataKunci) ||
+            item.nim.toLowerCase().includes(kataKunci)
+          );
+        }
+
+        if (filterEkspedisi.value) {
+          stream = stream.filter(item => item.ekspedisi === filterEkspedisi.value);
+        }
+
+        if (filterStatus.value) {
+          stream = stream.filter(item => item.status === filterStatus.value);
+        }
+
+        stream.sort((a, b) => {
+          let fieldA = a[sortBy.value];
+          let fieldB = b[sortBy.value];
+
+          if (typeof fieldA === 'string') fieldA = fieldA.toLowerCase();
+          if (typeof fieldB === 'string') fieldB = fieldB.toLowerCase();
+
+          if (fieldA < fieldB) return -1;
+          if (fieldA > fieldB) return 1;
+          return 0;
+        });
+
+        return stream;
+      });
+
+      const handlePaketChange = () => {
+        clearError('paket');
+        if (terpilihPaketObject.value) {
+          formModel.value.total = terpilihPaketObject.value.harga;
+        } else {
+          formModel.value.total = 0;
+        }
+      };
+
+      const setTanggalHariIni = () => {
+        clearError('tanggalKirim');
+        const waktuLokal = new Date();
+        const formatYMD = waktuLokal.toISOString().split('T')[0];
+        formModel.value.tanggalKirim = formatYMD;
+      };
+
+      const clearError = (field) => {
+        formErrors.value[field] = '';
+      };
+
+      const bukaModalDO = () => {
+        formModel.value = { nim: '', nama: '', ekspedisi: '', paket: '', tanggalKirim: '', total: 0, status: 'Diproses' };
+        formErrors.value = { nim: '', nama: '', ekspedisi: '', paket: '', tanggalKirim: '' };
+        modalShow.value = true;
+      };
+
+      const tutupModalDO = () => { modalShow.value = false; };
+
+      const submitFormDO = () => {
+        let isFormValid = true;
+
+        if (!formModel.value.nim.trim()) {
+          formErrors.value.nim = 'NIM mahasiswa wajib diisi.';
+          isFormValid = false;
+        } else if (!/^\d{8,}$/.test(formModel.value.nim.trim())) {
+          formErrors.value.nim = 'NIM tidak valid, minimal berisikan 8 digit angka.';
+          isFormValid = false;
+        }
+
+        if (!formModel.value.nama.trim()) {
+          formErrors.value.nama = 'Nama lengkap mahasiswa wajib diisi.';
+          isFormValid = false;
+        }
+
+        if (!formModel.value.ekspedisi) {
+          formErrors.value.ekspedisi = 'Silakan pilih opsi kurir ekspedisi.';
+          isFormValid = false;
+        }
+
+        if (!formModel.value.paket) {
+          formErrors.value.paket = 'Paket bahan ajar wajib ditentukan.';
+          isFormValid = false;
+        }
+
+        if (!formModel.value.tanggalKirim) {
+          formErrors.value.tanggalKirim = 'Tanggal batas kirim wajib diisi.';
+          isFormValid = false;
+        }
+
+        if (!isFormValid) return; 
+
+        const generateNoDOBaru = computedNextDONumber.value;
+
+        const bungkusanPayloadBaru = {
+          noDO: generateNoDOBaru,
+          nim: formModel.value.nim.trim(),
+          nama: formModel.value.nama.trim(),
+          ekspedisi: formModel.value.ekspedisi,
+          paket: formModel.value.paket,
+          tanggalKirim: formModel.value.tanggalKirim,
+          total: formModel.value.total,
+          status: formModel.value.status,
+          perjalanan: [{ waktu: formModel.value.tanggalKirim + " 08:00:00", keterangan: "Manifes DO dibentuk di pusat logistik" }]
+        };
+
+        masterTrackingList.value.unshift(bungkusanPayloadBaru);
+        newlyAddedDOKey.value = generateNoDOBaru;
+        tutupModalDO();
+        pemicuToastNotification(`Berhasil membuat Manifest DO Baru: ${generateNoDOBaru}`);
+
+        setTimeout(() => {
+          if (newlyAddedDOKey.value === generateNoDOBaru) {
+            newlyAddedDOKey.value = null;
+          }
+        }, 4000);
+      };
+
+      const pemicuToastNotification = (pesan) => {
+        const uniqueID = Date.now();
+        activeToasts.value.push({ id: uniqueID, msg: pesan });
+        setTimeout(() => {
+          activeToasts.value = activeToasts.value.filter(t => t.id !== uniqueID);
+        }, 3500);
+      };
+
+      const resetFilters = () => {
+        searchQuery.value = '';
+        filterEkspedisi.value = '';
+        filterStatus.value = '';
+        sortBy.value = 'tanggalKirim';
+        pemicuToastNotification('Seluruh konfigurasi filter dibersihkan.');
+      };
+
+      const dapatkanNamaPaket = (kodePaket) => {
+        const item = listPaketBuku.value.find(p => p.kode === kodePaket);
+        return item ? item.nama : 'Paket Tidak Ditemukan';
+      };
+
+      const dapatkanStatusClass = (status) => {
+        if (status === 'Diproses') return 'diproses';
+        if (status === 'Dalam Perjalanan') return 'dikirim';
+        if (status === 'Sampai') return 'sampai';
+        return 'bermasalah';
+      };
+
+      const dapatkanStatusIcon = (status) => {
+        if (status === 'Diproses') return 'fas fa-spinner fa-spin-pulse';
+        if (status === 'Dalam Perjalanan') return 'fas fa-truck-moving';
+        if (status === 'Sampai') return 'fas fa-circle-check';
+        return 'fas fa-triangle-exclamation';
+      };
+
+      const formatRupiah = (angka) => {
+        if (angka === undefined || angka === null) return 'Rp 0';
+        return 'Rp ' + angka.toLocaleString('id-ID');
+      };
+
+      return {
+        masterTrackingList, listPaketBuku, loading, searchQuery, filterEkspedisi, filterStatus,
+        sortBy, modalShow, newlyAddedDOKey, formModel, formErrors, activeToasts, terpilihPaketObject,
+        computedNextDONumber, dashboardSummary, filteredTrackingData, handlePaketChange,
+        setTanggalHariIni, clearError, bukaModalDO, tutupModalDO, submitFormDO, resetFilters,
+        dapatkanNamaPaket, dapatkanStatusClass, dapatkanStatusIcon, formatRupiah
+      };
+    }
+  }).mount('#app');
+</script>
+</body>
+</html>

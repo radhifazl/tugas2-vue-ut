@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UT Stock Manager - Aplikasi Bahan Ajar</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="css/stok.css">
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+</head>
+<body>
+
+<div id="app">
+  <div class="dashboard-container">
+    
+    <header class="main-header">
+      <h1>Manajemen Stok Bahan Ajar</h1>
+      <p>Pusat Logistik Operasional Distribusi Universitas Terbuka</p>
+    </header>
+
+    <section class="stats-row">
+      <div class="stat-card">
+        <div class="stat-icon blue"><i class="fas fa-layer-group"></i></div>
+        <div class="stat-info">
+          <h3>{{ statsPanel.total }}</h3>
+          <p>Total Item Terfilter</p>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon orange"><i class="fas fa-triangle-exclamation"></i></div>
+        <div class="stat-info">
+          <h3>{{ statsPanel.menipis }}</h3>
+          <p>Kondisi Stok Menipis</p>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon red"><i class="fas fa-circle-xmark"></i></div>
+        <div class="stat-info">
+          <h3>{{ statsPanel.kosong }}</h3>
+          <p>Kondisi Stok Kosong</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="control-panel">
+      <div class="search-filter-bar">
+        
+        <div class="group-left">
+          <div class="search-wrapper">
+            <i class="fas fa-search"></i>
+            <input type="text" class="form-input" placeholder="Cari kode atau judul..." v-model="searchQuery">
+          </div>
+          
+          <select class="form-input" v-model="filterUT">
+            <option value="">Semua UT-Daerah</option>
+            <option v-for="ut in upbjjList" :key="ut" :value="ut">{{ ut }}</option>
+          </select>
+
+          <transition name="fade">
+            <select class="form-input" v-model="filterKategori" v-if="filterUT">
+              <option value="">Semua Kategori di {{ filterUT }}</option>
+              <option v-for="kat in listKategoriTersedia" :key="kat" :value="kat">{{ kat }}</option>
+            </select>
+          </transition>
+
+          <select class="form-input" v-model="sortField">
+            <option value="judul">Urutkan: Judul</option>
+            <option value="qty">Urutkan: Qty Stok</option>
+            <option value="harga">Urutkan: Harga Buku</option>
+          </select>
+
+          <button class="btn-icon-toggle" @click="toggleSortDirection" :title="sortDirection === 'asc' ? 'Urutan Naik' : 'Urutan Turun'">
+            <i :class="sortDirection === 'asc' ? 'fas fa-sort-amount-up' : 'fas fa-sort-amount-down'"></i>
+          </button>
+        </div>
+
+        <div class="group-right">
+          <div class="status-pill-filter">
+            <label class="checkbox-ui" style="color: var(--warning)">
+              <input type="checkbox" v-model="showOnlyWarning"> <i class="fas fa-exclamation-circle"></i> Menipis
+            </label>
+            <label class="checkbox-ui" style="color: var(--danger)">
+              <input type="checkbox" v-model="showOnlyEmpty"> <i class="fas fa-circle-xmark"></i> Kosong
+            </label>
+          </div>
+          <button class="btn btn-secondary" @click="resetSemuaFilter">Reset</button>
+          <button class="btn btn-primary" @click="bukaModalTambah">
+            <i class="fas fa-plus-circle"></i> Tambah Bahan Ajar
+          </button>
+        </div>
+
+      </div>
+    </section>
+
+    <main class="data-table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Kode & Judul MK</th>
+            <th>Kategori</th>
+            <th>UT-Daerah</th>
+            <th>Lokasi Rak</th>
+            <th>Jumlah Stok / Safety</th>
+            <th>Status</th>
+            <th>Catatan</th>
+            <th style="width: 80px; text-align: center;">Aksi</th>
+          </tr>
+        </thead>
+        
+        <tbody v-if="loadingState">
+          <tr v-for="n in 3" :key="'skel-' + n" class="skeleton-tr">
+            <td colspan="8"><div class="skeleton-line"></div></td>
+          </tr>
+        </tbody>
+
+        <tbody v-else-if="processedStokData.length === 0">
+          <tr>
+            <td colspan="8">
+              <div class="empty-container">
+                <i class="fas fa-box-open"></i>
+                <h4>Tidak Ada Data Bahan Ajar</h4>
+                <p>Kombinasi filter atau kata kunci pencarian Anda tidak mencocokkan data stok apa pun.</p>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+
+        <transition-group name="list" tag="tbody" v-else>
+          <tr v-for="item in processedStokData" :key="item.kode + '-' + item.upbjj" class="table-row">
+            <td data-label="Kode & Judul MK">
+              <div class="td-view item-title-block">
+                <span class="code">{{ item.kode }}</span>
+                <div class="title">{{ item.judul }}</div>
+              </div>
+            </td>
+            <td data-label="Kategori">
+              <div class="td-view">{{ item.kategori }}</div>
+            </td>
+            <td data-label="UT-Daerah">
+              <div class="td-view sub-info">
+                <i class="fas fa-map-location-dot"></i> {{ item.upbjj }}
+              </div>
+            </td>
+            <td data-label="Lokasi Rak">
+              <div class="td-view font-weight-500" style="letter-spacing: 0.5px;">{{ item.lokasiRak }}</div>
+            </td>
+            <td data-label="Jumlah Stok / Safety">
+              <div class="td-view">
+                <strong>{{ item.qty }}</strong> <span style="color: var(--text-muted); font-size: 0.8rem;">/ {{ item.safety }}</span>
+              </div>
+            </td>
+            <td data-label="Status">
+              <div class="td-view">
+                <span :class="['status-badge', hitungStatusStok(item).class]">
+                  <i :class="hitungStatusStok(item).icon"></i>
+                  {{ hitungStatusStok(item).label }}
+                </span>
+              </div>
+            </td>
+            <td data-label="Catatan">
+              <div class="td-view sub-info" v-html="item.catatanHTML || '-'"></div>
+            </td>
+            <td data-label="Aksi" style="text-align: center;">
+              <div class="td-view" style="display: inline-flex; gap: 0.25rem; justify-content: center;">
+                <button class="btn-icon-toggle" @click="bukaModalEdit(item)" title="Ubah Data Stok">
+                  <i class="fas fa-pen-to-square" style="color: var(--primary);"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+        </transition-group>
+      </table>
+    </main>
+
+  </div>
+
+  <transition name="zoom">
+    <div class="modal-mask" v-if="modalActive" @click.self="tutupModal">
+      <div class="modal-wrapper">
+        <div class="modal-header">
+          <h3>{{ modalMode === 'add' ? 'Formulir Buku Baru' : 'Modifikasi Informasi Stok' }}</h3>
+          <button class="close-modal-btn" @click="tutupModal"><i class="fas fa-xmark"></i></button>
+        </div>
+        
+        <form @submit.prevent="eksekusiSimpanForm">
+          <div class="modal-body">
+            
+            <div class="form-grid">
+              <div class="form-group">
+                <label>KODE MATA KULIAH *</label>
+                <input type="text" class="form-input" v-model="formModel.kode" :disabled="modalMode === 'edit'" required placeholder="Contoh: EKMA4116">
+              </div>
+              <div class="form-group">
+                <label>JUDUL MATA KULIAH *</label>
+                <input type="text" class="form-input" v-model="formModel.judul" :disabled="modalMode === 'edit'" required placeholder="Nama Mata Kuliah">
+              </div>
+            </div>
+
+            <div class="form-grid">
+              <div class="form-group">
+                <label>KATEGORI *</label>
+                <select class="form-input" v-model="formModel.kategori" :disabled="modalMode === 'edit'" required>
+                  <option value="" disabled>Pilih Kategori</option>
+                  <option v-for="kat in daftarKategoriStatic" :key="kat" :value="kat">{{ kat }}</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>UNIVERSITAS TERBUKA DAERAH *</label>
+                <select class="form-input" v-model="formModel.upbjj" :disabled="modalMode === 'edit'" required>
+                  <option value="" disabled>Pilih Wilayah</option>
+                  <option v-for="ut in upbjjList" :key="ut" :value="ut">{{ ut }}</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>ALOKASI LOKASI RAK *</label>
+              <input type="text" class="form-input" v-model="formModel.lokasiRak" required placeholder="Contoh: R1-A3">
+            </div>
+
+            <div class="form-grid">
+              <div class="form-group">
+                <label>QTY SEKARANG *</label>
+                <input type="number" class="form-input" v-model.number="formModel.qty" min="0" required>
+              </div>
+              <div class="form-group">
+                <label>SAFETY STOCK VALUE *</label>
+                <input type="number" class="form-input" v-model.number="formModel.safety" min="0" required>
+              </div>
+            </div>
+
+            <div class="form-group full-width">
+              <label>HARGA SATUAN (RP) *</label>
+              <input type="number" class="form-input" v-model.number="formModel.harga" min="0" required placeholder="65000">
+            </div>
+
+            <div class="form-group full-width" style="margin-top: 1rem;">
+              <label>CATATAN LOGISTIK (MENDUKUNG HTML TAGS)</label>
+              <input type="text" class="form-input" v-model="formModel.catatanHTML" placeholder="Contoh: <em>Edisi Cetakan Baru</em>">
+            </div>
+
+          </div>
+          
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="tutupModal">Batalkan</button>
+            <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Komit Simpan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </transition>
+
+  <div class="toast-box">
+    <transition-group name="fade">
+      <div v-for="toast in activeToasts" :key="toast.id" :class="['toast-item', toast.type]">
+        <i :class="toast.type === 'success' ? 'fas fa-circle-check' : 'fas fa-circle-exclamation'"></i>
+        <span>{{ toast.text }}</span>
+      </div>
+    </transition-group>
+  </div>
+
+</div>
+
+<script src="js/dataBahanAjar.js"></script>
+
+<script>
+  const { createApp, ref, computed, watch, onMounted } = Vue;
+
+  createApp({
+    setup() {
+      const masterStok = ref([]);
+      const upbjjList = ref([]);
+      const daftarKategoriStatic = ref([]);
+      const loadingState = ref(true);
+
+      const searchQuery = ref('');
+      const filterUT = ref('');
+      const filterKategori = ref('');
+      const showOnlyWarning = ref(false);
+      const showOnlyEmpty = ref(false);
+
+      const sortField = ref('judul');
+      const sortDirection = ref('asc');
+
+      const modalActive = ref(false);
+      const modalMode = ref('add'); // 'add' | 'edit'
+      const formModel = ref({
+        kode: '', judul: '', kategori: '', upbjj: '', lokasiRak: '', qty: 0, safety: 0, harga: 0, catatanHTML: ''
+      });
+
+      const activeToasts = ref([]);
+
+      onMounted(() => {
+        setTimeout(() => {
+          masterStok.value = window.mockBahanAjar || [];
+          upbjjList.value = window.upbjjList || [];
+          daftarKategoriStatic.value = window.kategoriList || [];
+          loadingState.value = false;
+          buatToast('Sistem siap, berhasil menyinkronkan data!', 'success');
+        }, 1200); 
+      });
+
+      watch(filterUT, () => {
+        filterKategori.value = '';
+      });
+
+      const listKategoriTersedia = computed(() => {
+        if (!filterUT.value) return [];
+        const kategoriSet = new Set();
+        masterStok.value.forEach(item => {
+          if (item.upbjj === filterUT.value) {
+            kategoriSet.add(item.kategori);
+          }
+        });
+        return Array.from(kategoriSet);
+      });
+
+      const processedStokData = computed(() => {
+        let stream = [...masterStok.value];
+
+        if (searchQuery.value.trim() !== '') {
+          const kataKunci = searchQuery.value.toLowerCase();
+          stream = stream.filter(item => 
+            item.kode.toLowerCase().includes(kataKunci) || 
+            item.judul.toLowerCase().includes(kataKunci)
+          );
+        }
+
+        if (filterUT.value) {
+          stream = stream.filter(item => item.upbjj === filterUT.value);
+        }
+
+        if (filterUT.value && filterKategori.value) {
+          stream = stream.filter(item => item.kategori === filterKategori.value);
+        }
+
+        if (showOnlyEmpty.value) {
+          stream = stream.filter(item => item.qty === 0);
+        } 
+        else if (showOnlyWarning.value) {
+          stream = stream.filter(item => item.qty > 0 && item.qty < item.safety);
+        }
+
+        stream.sort((objA, objB) => {
+          let nilaiA = objA[sortField.value];
+          let nilaiB = objB[sortField.value];
+
+          if (typeof nilaiA === 'string') nilaiA = nilaiA.toLowerCase();
+          if (typeof nilaiB === 'string') nilaiB = nilaiB.toLowerCase();
+
+          if (nilaiA < nilaiB) return sortDirection.value === 'asc' ? -1 : 1;
+          if (nilaiA > nilaiB) return sortDirection.value === 'asc' ? 1 : -1;
+          return 0;
+        });
+
+        return stream;
+      });
+
+      const statsPanel = computed(() => {
+        let countMenipis = 0;
+        let countKosong = 0;
+
+        processedStokData.value.forEach(item => {
+          if (item.qty === 0) countKosong++;
+          else if (item.qty < item.safety) countMenipis++;
+        });
+
+        return {
+          total: processedStokData.value.length,
+          menipis: countMenipis,
+          kosong: countKosong
+        };
+      });
+
+      const hitungStatusStok = (item) => {
+        if (item.qty === 0) {
+          return { label: 'Kosong', class: 'kosong', icon: 'fas fa-circle-xmark' };
+        } else if (item.qty < item.safety) {
+          return { label: 'Menipis', class: 'menipis', icon: 'fas fa-triangle-exclamation' };
+        }
+        return { label: 'Aman', class: 'aman', icon: 'fas fa-circle-check' };
+      };
+
+      const toggleSortDirection = () => {
+        sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc';
+      };
+
+      const resetSemuaFilter = () => {
+        searchQuery.value = '';
+        filterUT.value = '';
+        filterKategori.value = '';
+        showOnlyWarning.value = false;
+        showOnlyEmpty.value = false;
+        sortField.value = 'judul';
+        sortDirection.value = 'asc';
+        buatToast('Seluruh kriteria filter dibersihkan.', 'success');
+      };
+
+      const bukaModalTambah = () => {
+        modalMode.value = 'add';
+        formModel.value = {
+          kode: '', judul: '', kategori: '', upbjj: '', lokasiRak: '', qty: 0, safety: 0, harga: 0, catatanHTML: ''
+        };
+        modalActive.value = true;
+      };
+
+      const bukaModalEdit = (item) => {
+        modalMode.value = 'edit';
+        formModel.value = { ...item };
+        modalActive.value = true;
+      };
+
+      const tutupModal = () => {
+        modalActive.value = false;
+      };
+
+      const eksekusiSimpanForm = () => {
+        if (formModel.value.qty < 0 || formModel.value.safety < 0 || formModel.value.harga < 0) {
+          buatToast('Kesalahan! Kuantitas, Safety, atau Harga tidak boleh bernilai negatif.', 'danger');
+          return;
+        }
+
+        if (modalMode.value === 'add') {
+          const terduplikasi = masterStok.value.some(buku => 
+            buku.kode.toUpperCase() === formModel.value.kode.toUpperCase() && 
+            buku.upbjj === formModel.value.upbjj
+          );
+
+          if (terduplikasi) {
+            buatToast('Kode buku tersebut sudah terdaftar di cabang UT daerah bersangkutan!', 'danger');
+            return;
+          }
+
+          masterStok.value.push({ ...formModel.value, kode: formModel.value.kode.toUpperCase() });
+          buatToast('Sukses menambahkan record bahan ajar baru!', 'success');
+        } else {
+          const targetIndex = masterStok.value.findIndex(buku => 
+            buku.kode === formModel.value.kode && buku.upbjj === formModel.value.upbjj
+          );
+          
+          if (targetIndex !== -1) {
+            masterStok.value[targetIndex] = { ...formModel.value };
+            buatToast('Perubahan informasi stok berhasil diperbarui!', 'success');
+          }
+        }
+        tutupModal();
+      };
+
+      const buatToast = (text, type = 'success') => {
+        const id = Date.now();
+        activeToasts.value.push({ id, text, type });
+        setTimeout(() => {
+          activeToasts.value = activeToasts.value.filter(toast => toast.id !== id);
+        }, 3500);
+      };
+
+      return {
+        upbjjList, daftarKategoriStatic, loadingState, searchQuery, filterUT, filterKategori,
+        showOnlyWarning, showOnlyEmpty, sortField, sortDirection, modalActive, modalMode,
+        formModel, activeToasts, listKategoriTersedia, processedStokData, statsPanel,
+        hitungStatusStok, toggleSortDirection, resetSemuaFilter, bukaModalTambah,
+        bukaModalEdit, tutupModal, eksekusiSimpanForm
+      };
+    }
+  }).mount('#app');
+</script>
+</body>
+</html>
